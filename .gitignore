@@ -10,3 +10,4 @@ config/credentials.json
 config/config.ini
 gdrive_token.pickle
 cloud_archive.session
+cloud_archive.session-journal

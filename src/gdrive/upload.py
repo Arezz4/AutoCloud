@@ -56,7 +56,9 @@ def upload_file_to_gdrive(filepath, folder_id=None):
 		if current == total:
 			print()  # Newline after complete
 
-	media = MediaFileUpload(filepath, resumable=True)
+	# Set chunk size to 5MB
+	chunk_size = 5 * 1024 * 1024
+	media = MediaFileUpload(filepath, resumable=True, chunksize=chunk_size)
 	# Set unlimited timeout for upload
 	orig_socket_timeout = socket.getdefaulttimeout()
 	socket.setdefaulttimeout(None)
