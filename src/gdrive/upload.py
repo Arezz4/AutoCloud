@@ -17,7 +17,7 @@ import pickle
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CREDENTIALS_FILE = os.path.abspath(os.path.join(BASE_DIR, '..', '..', 'config', 'credentials.json'))
-TOKEN_FILE = os.path.abspath(os.path.join(BASE_DIR, 'gdrive_token.pickle'))
+TOKEN_FILE = os.path.abspath(os.path.join(os.getcwd(), 'gdrive_token.pickle'))
 
 def get_drive_service():
 	creds = None
