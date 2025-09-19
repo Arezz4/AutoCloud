@@ -6,6 +6,7 @@ __pycache__/
 *.env
 *.sqlite3
 data/
-config/
+config/credentials.json
+config/config.ini
 gdrive_token.pickle
 cloud_archive.session
