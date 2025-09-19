@@ -8,11 +8,12 @@ Setup:
 3. The first run will prompt for Google account authorization and save token.json for future use.
 """
 import os
+import socket
+import pickle
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-import pickle
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +41,33 @@ def upload_file_to_gdrive(filepath, folder_id=None):
 	file_metadata = {'name': os.path.basename(filepath)}
 	if folder_id:
 		file_metadata['parents'] = [folder_id]
+
+	def progress_bar(current, total):
+		bar_len = 30
+		if total == 0:
+			percent = 0
+		else:
+			percent = current / total
+		filled_len = int(bar_len * percent)
+		bar = '=' * filled_len + '-' * (bar_len - filled_len)
+		mb_current = current / (1024 * 1024)
+		mb_total = total / (1024 * 1024) if total else 0
+		print(f'\r[Google Drive Upload] |{bar}| {mb_current:.2f}/{mb_total:.2f} MB', end='', flush=True)
+		if current == total:
+			print()  # Newline after complete
+
 	media = MediaFileUpload(filepath, resumable=True)
-	file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-	return file.get('id')
+	# Set unlimited timeout for upload
+	orig_socket_timeout = socket.getdefaulttimeout()
+	socket.setdefaulttimeout(None)
+	try:
+		request = service.files().create(body=file_metadata, media_body=media, fields='id')
+		response = None
+		while response is None:
+			status, response = request.next_chunk()
+			if status:
+				progress_bar(status.resumable_progress, media.size())
+		progress_bar(media.size(), media.size())
+	finally:
+		socket.setdefaulttimeout(orig_socket_timeout)
+	return response.get('id')

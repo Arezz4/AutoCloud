@@ -293,7 +293,7 @@ function toggleTopic(id) {
                     def make_links_clickable(text):
                         url_pattern = r'(https?://\S+|www\.\S+)'  # Match http/https/www URLs
                         return re.sub(url_pattern, lambda m: f'<a href="{m.group(0)}" target="_blank">{m.group(0)}</a>', text)
-                    safe_text = make_links_clickable(msg["text"])
+                    safe_text = make_links_clickable(msg["text"]).replace('\n', '<br>')
                     f.write(f'<div class="text">{safe_text}</div>')
                 if msg['photo']:
                     img_src = msg["photo"]
@@ -320,13 +320,27 @@ async def zip_files(messages, chat_log_path, zip_file_path, password):
         zipf.setpassword(password.encode())
         zipf.write(chat_log_path, 'chat_log.html')
         logger.info('chat_log.html added to zip.')
+        archive_names = set(['chat_log.html'])
+        def get_unique_archive_name(base_name):
+            if base_name not in archive_names:
+                archive_names.add(base_name)
+                return base_name
+            root, ext = os.path.splitext(base_name)
+            i = 1
+            while True:
+                new_name = f"{root}({i}){ext}"
+                if new_name not in archive_names:
+                    archive_names.add(new_name)
+                    return new_name
+                i += 1
         for message in messages:
             if message.photo:
                 fname = f"photo_{message.id}.jpg"
                 fpath = os.path.join(MEDIA_SUBFOLDER, fname)
                 if os.path.exists(fpath):
-                    zipf.write(fpath, os.path.join('media', fname))
-                    logger.info(f'Added photo to zip: {fname}')
+                    arcname = get_unique_archive_name(os.path.join('media', fname))
+                    zipf.write(fpath, arcname)
+                    logger.info(f'Added photo to zip: {arcname}')
             if message.document:
                 fname = message.file.name or f"document_{message.id}"
                 fpath = os.path.join(MEDIA_SUBFOLDER, fname)
@@ -336,8 +350,9 @@ async def zip_files(messages, chat_log_path, zip_file_path, password):
                         fpath = matches[0]
                         fname = os.path.basename(fpath)
                 if os.path.exists(fpath):
-                    zipf.write(fpath, os.path.join('media', fname))
-                    logger.info(f'Added document to zip: {fname}')
+                    arcname = get_unique_archive_name(os.path.join('media', fname))
+                    zipf.write(fpath, arcname)
+                    logger.info(f'Added document to zip: {arcname}')
 
 async def fetch_messages(group_id, min_id=None):
     """
@@ -356,13 +371,28 @@ async def save_all_media(messages):
     """
     Download all media (photos/documents) from a list of messages.
     """
-    for message in messages:
+    total = len(messages)
+    media_count = sum(1 for m in messages if m.photo or m.document)
+    if media_count == 0:
+        logger.info('No media to download.')
+        return
+    logger.info(f'Starting download of {media_count} media files...')
+    done = 0
+    for idx, message in enumerate(messages, 1):
         if message.photo or message.document:
+            media_type = 'photo' if message.photo else 'document'
             try:
                 await save_media(message)
-                logger.info(f'Saved media for message {message.id}.')
+                done += 1
+                # Print a simple progress bar
+                bar_len = 30
+                filled_len = int(bar_len * done // media_count)
+                bar = '=' * filled_len + '-' * (bar_len - filled_len)
+                print(f'\r[Downloading {media_type} for msg {message.id}] |{bar}| {done}/{media_count} media files', end='', flush=True)
             except Exception as e:
                 logger.error(f'Failed to save media for message {message.id}: {e}')
+    print()  # Newline after progress bar
+    logger.info('All media downloads complete.')
 
 async def backup_and_send(event, messages, zip_prefix, chat_log_title, update_last_backup=False):
     """
@@ -382,8 +412,21 @@ async def backup_and_send(event, messages, zip_prefix, chat_log_title, update_la
     await zip_files(messages, chat_log_path, zip_file_path, password)
     await event.respond(f'Backup complete. Uploading the file...\nPassword: {password if PASSWORD_RANDOMLY_GENERATED else "(default)"}')
     if SEND_TO_TELEGRAM:
+        def tg_progress_bar(current, total):
+            bar_len = 30
+            if total == 0:
+                percent = 0
+            else:
+                percent = current / total
+            filled_len = int(bar_len * percent)
+            bar = '=' * filled_len + '-' * (bar_len - filled_len)
+            mb_current = current / (1024 * 1024)
+            mb_total = total / (1024 * 1024) if total else 0
+            print(f'\r[Telegram Upload] |{bar}| {mb_current:.2f}/{mb_total:.2f} MB', end='', flush=True)
+            if current == total:
+                print()
         try:
-            await client.send_file(ADMIN_ID, zip_file_path)
+            await client.send_file(ADMIN_ID, zip_file_path, progress_callback=tg_progress_bar)
             logger.info(f'{zip_prefix} zip sent to admin.')
         except Exception as e:
             logger.error(f'Error sending {zip_prefix} zip: {e}')
@@ -458,13 +501,41 @@ async def save_media(message):
     """
     Download a single media file (photo or document) from a message.
     """
+    import os, sys
+    def get_unique_path(base_path):
+        if not os.path.exists(base_path):
+            return base_path
+        root, ext = os.path.splitext(base_path)
+        i = 1
+        while True:
+            new_path = f"{root}({i}){ext}"
+            if not os.path.exists(new_path):
+                return new_path
+            i += 1
+
+    def progress_bar(current, total):
+        bar_len = 30
+        if total == 0:
+            percent = 0
+        else:
+            percent = current / total
+        filled_len = int(bar_len * percent)
+        bar = '=' * filled_len + '-' * (bar_len - filled_len)
+        mb_current = current / (1024 * 1024)
+        mb_total = total / (1024 * 1024) if total else 0
+        print(f'\r[File Download] |{bar}| {mb_current:.2f}/{mb_total:.2f} MB', end='', flush=True)
+        if current == total:
+            print()  # Newline after complete
+
     if message.photo:
         file_path = os.path.join(MEDIA_SUBFOLDER, f"photo_{message.id}.jpg")
-        await client.download_media(message, file_path)
+        file_path = get_unique_path(file_path)
+        await client.download_media(message, file_path, progress_callback=progress_bar)
     elif message.document:
         file_name = message.file.name or f"document_{message.id}"
         file_path = os.path.join(MEDIA_SUBFOLDER, file_name)
-        await client.download_media(message, file_path)
+        file_path = get_unique_path(file_path)
+        await client.download_media(message, file_path, progress_callback=progress_bar)
 
 def cleanup_collected_files(last_backup_file, logger, after='backup'):
     """
