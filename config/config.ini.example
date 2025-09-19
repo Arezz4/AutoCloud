@@ -1,0 +1,12 @@
+[general]
+SEND_TO_TELEGRAM = True
+DELETE_FILES_AFTER_UPLOAD = True
+# If you want the password to be randomly generated, set DEFAULT_PASSWORD = 0
+DEFAULT_PASSWORD = 123
+
+[telegram]
+API_ID = 
+API_HASH = 
+PHONE = +989123456789
+GROUP_ID = 
+ADMIN_ID = 
