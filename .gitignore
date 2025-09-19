@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+*.env
+*.sqlite3
+data/
+config/
+gdrive_token.pickle
+cloud_archive.session
